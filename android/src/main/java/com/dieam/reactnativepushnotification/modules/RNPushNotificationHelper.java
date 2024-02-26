@@ -511,19 +511,30 @@ public class RNPushNotificationHelper {
 
                 // Add button for each actions.
                 for (int i = 0; i < actionsArray.length(); i++) {
-                    String action;
+                    String action = null;
+                    Uri deepLinkUri = null;
                     try {
-                        action = actionsArray.getString(i);
+                        String[] act = actionsArray.getString(i).split(">");
+                        action = act[0].trim();
+                        if (act.length==2 && !action.equals("ReplyInput")){
+                            deepLinkUri = Uri.parse(act[1].trim()); 
+                        }
+                        
                     } catch (JSONException e) {
                         Log.e(LOG_TAG, "Exception while getting action from actionsArray.", e);
                         continue;
                     }
 
 
-                    Intent actionIntent = new Intent(context, RNPushNotificationActions.class);
-                    actionIntent.setAction(packageName + ".ACTION_" + i);
-
-                    actionIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                    Intent actionIntent;
+                    if (deepLinkUri == null){
+                        actionIntent = new Intent(context, RNPushNotificationActions.class);
+                        actionIntent.setAction(packageName + ".ACTION_" + i);
+                        actionIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                    } else{
+                        actionIntent = new Intent(Intent.ACTION_VIEW, deepLinkUri);
+                        actionIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                    }
 
                     // Add "action" for later identifying which button gets pressed.
                     bundle.putString("action", action);
@@ -533,9 +544,18 @@ public class RNPushNotificationHelper {
                         intent.putExtra("message_id", messageId);
                     }
 
-                    int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE : PendingIntent.FLAG_UPDATE_CURRENT;
+                    int flags;
+                    
+                    if (action.equals("ReplyInput") && (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)){
+                        flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE : PendingIntent.FLAG_UPDATE_CURRENT;
+                    }else 
+                        flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE : PendingIntent.FLAG_UPDATE_CURRENT;
 
-                    PendingIntent pendingActionIntent = PendingIntent.getBroadcast(context, notificationID, actionIntent, flags);
+                    PendingIntent pendingActionIntent;
+                    if (deepLinkUri == null)    
+                        pendingActionIntent = PendingIntent.getBroadcast(context, notificationID, actionIntent, flags);
+                    else
+                        pendingActionIntent = PendingIntent.getActivity(context,notificationID,actionIntent, flags);
 
                     if(action.equals("ReplyInput")){
                         //Action with inline reply
@@ -567,7 +587,7 @@ public class RNPushNotificationHelper {
                 }
 
             }
-
+            
             // Remove the notification from the shared preferences once it has been shown
             // to avoid showing the notification again when the phone is rebooted. If the
             // notification is not removed, then every time the phone is rebooted, we will
